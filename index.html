@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>اكس او | أونلاين</title>
     
+    <!-- استدعاء Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
@@ -28,49 +28,64 @@
         .cell.O { color: #ff9f4a; text-shadow: 0 0 15px #ff9f4a; }
         .cell.disabled { cursor: default; }
         footer { font-size: 11px; color: #555; margin-top: 20px; }
-        .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid #fff; border-radius: 50%; border-top-color: transparent; animation: spin 1s linear infinite; margin-right: 10px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 <div class="game-container">
     <h1>🎮 اكس او أونلاين</h1>
-    <div class="status" id="statusMsg">🔄 جاري التحميل...</div>
-    <div class="turn" id="turnMsg">⚡ جاري التسجيل...</div>
+    <div class="status" id="statusMsg">تجهيز النظام...</div>
+    <div class="turn" id="turnMsg">⚡ انتظر...</div>
     <div class="buttons">
-        <button id="searchBtn" style="display:none;">🔍 بحث عن لاعب</button>
-        <button id="cancelBtn" style="display:none;">❌ إلغاء</button>
+        <button id="searchBtn">🔍 بحث عن لاعب</button>
         <button id="leaveBtn" style="display:none;">🚪 مغادرة</button>
     </div>
     <div class="board" id="board"></div>
-    <footer>🎯 أونلاين حقيقي | ضد لاعب حقيقي</footer>
+    <footer>🎯 أونلاين حقيقي | يعمل عبر Firebase</footer>
 </div>
 
 <script>
+    // إعدادات Firebase الجديدة الخاصة بك
     const firebaseConfig = {
         databaseURL: "https://xo-d7a80-default-rtdb.firebaseio.com/"
     };
     
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-    const auth = firebase.auth();
+    let db, gameRef, playerSymbol, isMyTurn, gameId, myId;
+    const myIdKey = 'xo_player_id_new';
     
-    let gameRef = null;
-    let playerSymbol = null;
-    let isMyTurn = false;
-    let gameId = null;
-    let currentListener = null;
-    let searchTimeout = null;
-    let isSearching = false;
-    let myUID = null;
-    
+    if (!localStorage.getItem(myIdKey)) {
+        localStorage.setItem(myIdKey, 'p_' + Math.random().toString(36).substr(2, 9));
+    }
+    myId = localStorage.getItem(myIdKey);
+
     const statusMsg = document.getElementById('statusMsg');
     const turnMsg = document.getElementById('turnMsg');
     const searchBtn = document.getElementById('searchBtn');
-    const cancelBtn = document.getElementById('cancelBtn');
     const leaveBtn = document.getElementById('leaveBtn');
     const boardDiv = document.getElementById('board');
-    
+
+    function init() {
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            
+            // اختبار الاتصال والقواعد (Rules)
+            const testRef = db.ref('.info/connected');
+            testRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    statusMsg.innerText = "✅ متصل وجاهز";
+                    turnMsg.innerText = "اضغط بحث للبدء";
+                } else {
+                    statusMsg.innerText = "⏳ جاري الاتصال...";
+                }
+            });
+            
+            createBoard();
+        } catch (e) {
+            statusMsg.innerText = "⚠️ خطأ في الإعدادات";
+            alert("تأكد من وضع رابط Firebase بشكل صحيح");
+        }
+    }
+
     function createBoard() {
         boardDiv.innerHTML = '';
         for (let i = 0; i < 9; i++) {
@@ -81,114 +96,67 @@
             boardDiv.appendChild(cell);
         }
     }
-    
-    async function anonymousLogin() {
-        try {
-            statusMsg.innerText = "🔄 جاري التسجيل...";
-            const userCredential = await auth.signInAnonymously();
-            myUID = userCredential.user.uid;
-            statusMsg.innerText = "✅ جاهز للعب";
-            turnMsg.innerText = "⚡ اضغط بحث للبدء";
-            searchBtn.style.display = 'inline-block';
-            return true;
-        } catch (error) {
-            statusMsg.innerText = "❌ فشل التسجيل: فعّل Anonymous Auth في Firebase";
-            turnMsg.innerText = "اذهب إلى Authentication ← Sign-in methods";
-            return false;
-        }
-    }
-    
+
     async function searchForPlayer() {
-        if (isSearching) return;
-        if (!myUID) return;
-        
-        isSearching = true;
+        statusMsg.innerText = "⏳ جاري البحث...";
         searchBtn.disabled = true;
-        cancelBtn.style.display = 'inline-block';
-        statusMsg.innerHTML = '<span class="loading"></span> جاري البحث عن خصم...';
-        
+
         try {
             const waitingRef = db.ref('waiting');
             const snapshot = await waitingRef.once('value');
             const waitingPlayer = snapshot.val();
-            
-            if (waitingPlayer && waitingPlayer.id !== myUID) {
+
+            if (waitingPlayer && waitingPlayer.id !== myId) {
                 gameId = waitingPlayer.gameId;
                 playerSymbol = 'O';
                 gameRef = db.ref('games/' + gameId);
-                await gameRef.update({ player2: myUID, status: 'playing' });
+                
+                await gameRef.update({ player2: myId, status: 'playing' });
                 await waitingRef.remove();
                 startGame();
             } else {
-                playerSymbol = 'X';
                 gameId = 'g_' + Date.now();
+                playerSymbol = 'X';
                 const newGame = {
                     id: gameId,
-                    player1: myUID,
-                    player2: null,
+                    player1: myId,
                     status: 'waiting',
                     board: Array(9).fill(""),
                     turn: 'X'
                 };
                 gameRef = db.ref('games/' + gameId);
                 await gameRef.set(newGame);
-                await waitingRef.set({ id: myUID, gameId: gameId });
-                statusMsg.innerHTML = '<span class="loading"></span> ننتظر خصماً...';
+                await waitingRef.set({ id: myId, gameId: gameId });
                 
-                currentListener = gameRef.on('value', (snap) => {
+                statusMsg.innerText = "⏳ ننتظر خصماً...";
+                
+                gameRef.on('value', (snap) => {
                     const data = snap.val();
-                    if (data && data.status === 'playing' && data.player2) {
+                    if (data && data.status === 'playing') {
                         startGame();
                     }
                 });
-                
-                searchTimeout = setTimeout(async () => {
-                    if (isSearching) {
-                        await cancelSearch();
-                        statusMsg.innerText = "⌛ لم يتم العثور على خصم";
-                        searchBtn.style.display = 'inline-block';
-                        searchBtn.disabled = false;
-                    }
-                }, 30000);
             }
         } catch (error) {
-            statusMsg.innerText = "❌ خطأ في الاتصال";
+            console.error(error);
+            alert("خطأ: تأكد من تفعيل Rules في Firebase إلى true");
+            statusMsg.innerText = "❌ خطأ في القواعد (Rules)";
             searchBtn.disabled = false;
-            cancelBtn.style.display = 'none';
-            isSearching = false;
         }
     }
-    
-    async function cancelSearch() {
-        clearTimeout(searchTimeout);
-        if (currentListener && gameRef) gameRef.off('value', currentListener);
-        if (gameId) {
-            await db.ref('games/' + gameId).remove();
-            await db.ref('waiting').remove();
-        }
-        isSearching = false;
-        cancelBtn.style.display = 'none';
-        searchBtn.style.display = 'inline-block';
-        searchBtn.disabled = false;
-        statusMsg.innerText = "✅ تم الإلغاء";
-    }
-    
+
     function startGame() {
-        clearTimeout(searchTimeout);
-        isSearching = false;
-        cancelBtn.style.display = 'none';
+        statusMsg.innerText = `🎮 بدأت! أنت ${playerSymbol}`;
         searchBtn.style.display = 'none';
         leaveBtn.style.display = 'inline-block';
-        statusMsg.innerText = `🎮 بدأت! أنت ${playerSymbol}`;
-        
-        if (currentListener && gameRef) gameRef.off('value', currentListener);
         
         gameRef.on('value', (snap) => {
             const data = snap.val();
-            if (data) updateUI(data);
+            if (!data) return;
+            updateUI(data);
         });
     }
-    
+
     function updateUI(data) {
         const board = data.board || Array(9).fill("");
         const cells = document.querySelectorAll('.cell');
@@ -196,69 +164,67 @@
         board.forEach((val, i) => {
             cells[i].innerText = val;
             cells[i].className = `cell ${val}`;
-            if (data.turn === playerSymbol && data.status === 'playing' && val === "") {
-                cells[i].classList.remove('disabled');
-            } else {
+            if (val !== "" || data.turn !== playerSymbol || data.status !== 'playing') {
                 cells[i].classList.add('disabled');
+            } else {
+                cells[i].classList.remove('disabled');
             }
         });
-        
+
         if (data.status === 'finished') {
-            if (data.winner === 'draw') statusMsg.innerText = "🤝 تعادل!";
-            else if (data.winner === playerSymbol) statusMsg.innerText = "🎉 فزت!";
-            else statusMsg.innerText = "💔 خسرت";
+            statusMsg.innerText = data.winner === 'draw' ? "🤝 تعادل!" : (data.winner === playerSymbol ? "🎉 فزت!" : "💔 خسرت");
             turnMsg.innerText = "انتهت المباراة";
             setTimeout(() => {
-                if (confirm("انتهت اللعبة! هل تريد لعب مباراة جديدة؟")) location.reload();
-            }, 2000);
+                if(confirm("انتهت اللعبة، هل تريد العودة للرئيسية؟")) location.reload();
+            }, 1500);
         } else {
             isMyTurn = (data.turn === playerSymbol);
-            turnMsg.innerText = isMyTurn ? "🎯 دورك الآن" : "⏳ انتظر دور الخصم";
+            turnMsg.innerText = isMyTurn ? "🎯 دورك" : "⏳ دور الخصم";
         }
     }
-    
-    async function makeMove(index) {
+
+    async function makeMove(i) {
         if (!isMyTurn) return;
+        
         const snap = await gameRef.once('value');
         const data = snap.val();
-        if (!data || data.status !== 'playing' || data.board[index] !== "") return;
-        
+        if (!data || data.board[i] !== "" || data.status !== 'playing') return;
+
         const newBoard = [...data.board];
-        newBoard[index] = playerSymbol;
-        const winner = checkWinner(newBoard);
-        const isDraw = !winner && newBoard.every(cell => cell !== "");
+        newBoard[i] = playerSymbol;
         
-        const updates = { board: newBoard, turn: playerSymbol === 'X' ? 'O' : 'X' };
+        const winner = checkWinner(newBoard);
+        const isDraw = !winner && newBoard.every(c => c !== "");
+        
+        const updates = {
+            board: newBoard,
+            turn: playerSymbol === 'X' ? 'O' : 'X'
+        };
+
         if (winner || isDraw) {
             updates.status = 'finished';
             updates.winner = winner || 'draw';
         }
+
         await gameRef.update(updates);
     }
-    
-    function checkWinner(board) {
-        const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-        for (let line of lines) {
-            const [a,b,c] = line;
-            if (board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
+
+    function checkWinner(b) {
+        const p = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+        for (let [a,b1,c] of p) {
+            if (b[a] && b[a] === b[b1] && b[a] === b[c]) return b[a];
         }
         return null;
     }
-    
-    async function leaveGame() {
-        if (gameRef && gameId) {
-            await gameRef.remove();
-            await db.ref('waiting').remove();
-        }
-        location.reload();
-    }
-    
+
     searchBtn.onclick = searchForPlayer;
-    cancelBtn.onclick = cancelSearch;
-    leaveBtn.onclick = leaveGame;
-    
-    createBoard();
-    anonymousLogin();
+    leaveBtn.onclick = () => {
+        if(gameRef) gameRef.remove();
+        location.reload();
+    };
+
+    init();
 </script>
 </body>
 </html>
+
