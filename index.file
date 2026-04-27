@@ -2,8 +2,9 @@
 <html dir="rtl" lang="ar">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>اكس او - لعبة بسيطة</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اكس او | أونلاين حقيقي</title>
+    <script src="/socket.io/socket.io.js"></script>
     <style>
         * {
             margin: 0;
@@ -11,47 +12,46 @@
             box-sizing: border-box;
             user-select: none;
         }
-
         body {
-            background: #222;
-            font-family: system-ui, 'Segoe UI', Tahoma, sans-serif;
-            min-height: 100vh;
+            background: #1a1a2e;
+            font-family: system-ui, Arial, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
+            min-height: 100vh;
             padding: 16px;
         }
-
-        /* أبسط صندوق للعبة - لا زخرفة */
-        .game-box {
-            background: #1a1a1a;
-            padding: 20px 16px 24px;
-            border-radius: 0;
+        .game-container {
+            background: #0f0f1a;
+            padding: 24px 20px;
+            max-width: 420px;
             width: 100%;
-            max-width: 380px;
             text-align: center;
+            border-radius: 20px;
         }
-
         h1 {
-            font-size: 28px;
-            font-weight: 700;
             color: #eee;
+            font-size: 32px;
             margin-bottom: 8px;
-            letter-spacing: 0;
         }
-
-        /* منطقة الحالة - بسيطة */
-        .status-area {
-            background: #2c2c2c;
-            padding: 10px;
+        .status {
+            background: #16213e;
+            padding: 12px;
+            border-radius: 40px;
             margin: 12px 0;
-            font-size: 18px;
+            color: #0f3460;
             font-weight: bold;
-            color: #f5f5f5;
-            font-family: monospace;
+            font-size: 18px;
+            color: #e94560;
         }
-
-        /* أزرار بسيطة بدون تأثيرات */
+        .turn {
+            background: #1a1a2e;
+            padding: 8px;
+            border-radius: 20px;
+            color: #ccc;
+            margin: 10px 0;
+            font-size: 16px;
+        }
         .buttons {
             display: flex;
             gap: 10px;
@@ -59,456 +59,326 @@
             margin: 15px 0;
             flex-wrap: wrap;
         }
-
         button {
-            background: #3a3a3a;
+            background: #0f3460;
             border: none;
             color: white;
-            font-size: 16px;
             font-weight: bold;
-            padding: 8px 18px;
+            padding: 10px 20px;
+            border-radius: 40px;
             cursor: pointer;
-            font-family: inherit;
-            border-radius: 0;
-            transition: none;
+            font-size: 14px;
+            transition: 0.2s;
         }
-
         button:active {
-            background: #555;
+            transform: scale(0.96);
         }
-
         button:disabled {
             opacity: 0.5;
-            cursor: default;
+            cursor: not-allowed;
         }
-
-        .search-btn {
-            background: #2c5a2e;
-        }
-        .leave-btn {
-            background: #8b3c3c;
-        }
-        .rematch-btn {
-            background: #2c5f6e;
-        }
-
-        /* شبكة 3x3 - حجم المربع متساوي */
         .board {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 5px;
-            background: #1a1a1a;
+            gap: 8px;
             margin: 20px 0;
         }
-
         .cell {
-            background-color: #2b2b2b;
+            background: #16213e;
             aspect-ratio: 1 / 1;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 56px;
             font-weight: bold;
-            color: #e0e0e0;
+            border-radius: 16px;
             cursor: pointer;
-            font-family: monospace;
+            transition: 0.1s;
+            color: #eee;
         }
-
-        .cell.X {
-            color: #6ab0f5;
-        }
-        .cell.O {
-            color: #f5a562;
-        }
-
-        .cell.disabled {
-            cursor: default;
-        }
-
-        .turn-text {
-            background: #262626;
-            padding: 6px;
-            font-size: 16px;
-            font-weight: bold;
-            color: #ccc;
-            margin-top: 6px;
-        }
-
-        .simple-footer {
+        .cell.X { color: #4db8ff; }
+        .cell.O { color: #ff9f4a; }
+        .cell.disabled { cursor: default; opacity: 0.8; }
+        footer {
             font-size: 11px;
             color: #555;
-            margin-top: 18px;
+            margin-top: 20px;
         }
     </style>
 </head>
 <body>
-<div class="game-box">
-    <h1>⚡ اكس او ⚡</h1>
-    <div class="status-area" id="gameStatus">🔍 اضغط "بحث عن لاعب"</div>
+<div class="game-container">
+    <h1>🎮 اكس او اونلاين</h1>
+    <div class="status" id="statusMsg">🔍 اضغط بحث عن لاعب</div>
+    <div class="turn" id="turnMsg">⚡ انتظر...</div>
 
     <div class="buttons">
-        <button id="searchBtn" class="search-btn">🔍 بحث عن لاعب</button>
-        <button id="leaveBtn" class="leave-btn" style="display: none;">🚪 مغادرة</button>
-        <button id="rematchBtn" class="rematch-btn" style="display: none;">🔄 مباراة جديدة</button>
+        <button id="searchBtn">🔍 بحث عن لاعب</button>
+        <button id="cancelBtn" style="display:none;">❌ إلغاء البحث</button>
+        <button id="leaveBtn" style="display:none;">🚪 مغادرة</button>
+        <button id="rematchBtn" style="display:none;">🔄 مباراة جديدة</button>
     </div>
 
-    <!-- شبكة 3x3 -->
-    <div class="board" id="boardGrid">
-        <!-- 9 خلايا -->
-    </div>
-
-    <div class="turn-text" id="turnIndicator">—</div>
-    <div class="simple-footer">🎮 3x3 | دورك باللعب</div>
+    <div class="board" id="board"></div>
+    <footer>🎯 لاعب ضد لاعب | أونلاين حقيقي</footer>
 </div>
 
 <script>
-    // أبسط لعبة اكس او مع خاصية "بحث عن لاعب" (ضد ذكاء اصطناعي بسيط)
-    // الهدف: حجم مربع 3x3 ، زر بحث ، لا تعقيدات ، لا سيرفرات خارجية
-    
+    // متغيرات العميل
+    let socket = null;
+    let currentRoom = null;
+    let mySymbol = null;
+    let isMyTurn = false;
+    let gameActive = false;
+    let boardState = Array(9).fill(null);
+    let inGame = false;
+    let searching = false;
+    let gameOver = false;
+
     // عناصر DOM
-    const boardContainer = document.getElementById('boardGrid');
-    const statusDiv = document.getElementById('gameStatus');
-    const turnDiv = document.getElementById('turnIndicator');
+    const boardDiv = document.getElementById('board');
+    const statusMsg = document.getElementById('statusMsg');
+    const turnMsg = document.getElementById('turnMsg');
     const searchBtn = document.getElementById('searchBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
     const leaveBtn = document.getElementById('leaveBtn');
     const rematchBtn = document.getElementById('rematchBtn');
 
-    // حالة اللعبة
-    let board = Array(9).fill(null);      // null, 'X', 'O'
-    let gameActive = false;                // هل المباراة نشطة
-    let currentTurn = 'X';                // X دائماً اللاعب, O هو الخصم (AI)
-    let winner = null;                    // null أو 'X' أو 'O' أو 'draw'
-    let isSearching = false;              // محاكاة البحث
-
-    // إنشاء واجهة الشبكة
-    function createBoardUI() {
-        boardContainer.innerHTML = '';
+    // إنشاء الشبكة
+    function createBoard() {
+        boardDiv.innerHTML = '';
         for (let i = 0; i < 9; i++) {
             const cell = document.createElement('div');
             cell.classList.add('cell');
             cell.dataset.index = i;
-            cell.textContent = '';
-            cell.addEventListener('click', () => onCellClick(i));
-            boardContainer.appendChild(cell);
+            cell.addEventListener('click', () => handleCellClick(i));
+            boardDiv.appendChild(cell);
         }
     }
 
-    // تحديث الخلايا حسب الـ board
     function updateBoardUI() {
         const cells = document.querySelectorAll('.cell');
         for (let i = 0; i < 9; i++) {
-            const value = board[i];
-            cells[i].textContent = value || '';
-            if (value === 'X') {
+            const val = boardState[i];
+            cells[i].textContent = val || '';
+            if (val === 'X') {
                 cells[i].classList.add('X');
                 cells[i].classList.remove('O');
-            } else if (value === 'O') {
+            } else if (val === 'O') {
                 cells[i].classList.add('O');
                 cells[i].classList.remove('X');
             } else {
                 cells[i].classList.remove('X', 'O');
             }
 
-            // تفعيل/تعطيل الضغط : إذا اللعبة نشطة ولم تنته والدور للاعب والخانة فارغة
-            if (gameActive && !winner && currentTurn === 'X' && board[i] === null) {
-                cells[i].style.cursor = 'pointer';
+            // تفعيل/تعطيل الضغط
+            if (gameActive && isMyTurn && !gameOver && boardState[i] === null) {
                 cells[i].classList.remove('disabled');
             } else {
-                cells[i].style.cursor = 'default';
                 cells[i].classList.add('disabled');
             }
         }
     }
 
-    // فحص الفائز أو التعادل
-    function checkGameStatus() {
-        // خطوط الفوز
-        const winPatterns = [
-            [0,1,2], [3,4,5], [6,7,8],
-            [0,3,6], [1,4,7], [2,5,8],
-            [0,4,8], [2,4,6]
-        ];
-
-        for (let pattern of winPatterns) {
-            const [a,b,c] = pattern;
-            if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-                return { winner: board[a], isDraw: false };
-            }
-        }
-
-        // هل التعادل
-        const isFull = board.every(cell => cell !== null);
-        if (isFull) return { winner: 'draw', isDraw: true };
-        return { winner: null, isDraw: false };
-    }
-
-    // تطبيق نهاية اللعبة
-    function endGame(gameWinner) {
-        winner = gameWinner;
-        gameActive = false;  // اللعبة تنتهي، لا حركات جديدة
-
-        if (winner === 'X') {
-            statusDiv.innerText = '🎉 فزت! 🎉';
-            turnDiv.innerText = '🏆 انتصرت';
-        } else if (winner === 'O') {
-            statusDiv.innerText = '💀 خسرت! الخصم فاز 💀';
-            turnDiv.innerText = '💔 هزيمة';
-        } else if (winner === 'draw') {
-            statusDiv.innerText = '🤝 تعادل! لا فائز 🤝';
-            turnDiv.innerText = '🤝 تعادل';
-        } else {
-            statusDiv.innerText = '⚡ المباراة متوقفة';
-        }
-
-        // تحديث الأزرار (اظهار ريماتش)
-        updateButtonsVisibility();
-        updateBoardUI();
-    }
-
-    // تنفيذ حركة
-    function makeMove(index, player) {
-        if (!gameActive) return false;
-        if (winner) return false;
-        if (board[index] !== null) return false;
-        if (player !== currentTurn) return false;
-
-        // تنفيذ الحركة
-        board[index] = player;
-        updateBoardUI();
-
-        // التحقق من الفوز بعد الحركة
-        const { winner: newWinner } = checkGameStatus();
-        if (newWinner) {
-            winner = newWinner;
-            gameActive = false;
-            endGame(winner);
-            return true;
-        }
-
-        // تغيير الدور
-        currentTurn = (currentTurn === 'X') ? 'O' : 'X';
+    function updateUIForGameState(data) {
+        const { board, currentTurn, winner, gameActive: active } = data;
+        boardState = [...board];
+        gameActive = active;
         
-        // تحديث النصوص
-        if (gameActive && !winner) {
-            if (currentTurn === 'X') {
-                turnDiv.innerText = '🎯 دورك (X)';
-                statusDiv.innerText = '✨ لعبة نشطة ✨';
-            } else {
-                turnDiv.innerText = '🤖 دور الخصم (O) ...';
-                statusDiv.innerText = 'الخصم يفكر';
-            }
-        }
-        updateBoardUI();
-        return true;
-    }
-
-    // حركة الذكاء الاصطناعي (بسيط: يختار عشوائي من الخانات الفارغة)
-    function aiMove() {
-        if (!gameActive) return;
-        if (winner) return;
-        if (currentTurn !== 'O') return;
-
-        // الحصول على الخانات الفارغة
-        const emptyIndices = board.reduce((arr, cell, idx) => {
-            if (cell === null) arr.push(idx);
-            return arr;
-        }, []);
-        
-        if (emptyIndices.length === 0) return;
-
-        // تأخير بسيط لمحاكاة التفكير (مع الحرص على عدم التكرار)
-        setTimeout(() => {
-            // نتحقق مرة أخرى ان اللعبة لازالت نشطة والدور على O
-            if (!gameActive || winner || currentTurn !== 'O') return;
-            
-            // اختيار عشوائي
-            const randomIndex = emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
-            makeMove(randomIndex, 'O');
-            
-            // بعد حركة AI نتحقق من انتهاء أو استمرار
-            if (gameActive && !winner && currentTurn === 'X') {
-                turnDiv.innerText = '🎯 دورك (X)';
-                statusDiv.innerText = '🎲 دورك الآن';
-                updateBoardUI();
-            }
-        }, 80);
-    }
-
-    // النقر على خانة
-    function onCellClick(index) {
-        if (!gameActive) {
-            // اذا لم تبدأ مباراة أو انتهت لا شي
-            if (!gameActive && !winner) statusDiv.innerText = '🔍 ابحث عن لاعب أولاً';
-            return;
-        }
         if (winner) {
-            statusDiv.innerText = 'المباراة انتهت، اضغط مباراة جديدة';
-            return;
-        }
-        if (currentTurn !== 'X') {
-            statusDiv.innerText = '⏳ انتظر دور الخصم';
-            return;
-        }
-        if (board[index] !== null) {
-            statusDiv.innerText = '⚠️ هذه الخانة مشغولة';
-            setTimeout(() => { if(gameActive && !winner) statusDiv.innerText = '🎲 لعبة نشطة'; }, 600);
-            return;
-        }
-        
-        // حركة اللاعب
-        const success = makeMove(index, 'X');
-        if (success && gameActive && !winner && currentTurn === 'O') {
-            // استدعاء حركة AI
-            aiMove();
-        }
-    }
-
-    // بدء مباراة جديدة (ضد AI)
-    function startNewMatch() {
-        // إعادة ضبط المتغيرات
-        board = Array(9).fill(null);
-        currentTurn = 'X';      // اللاعب يبدأ دائماً
-        winner = null;
-        gameActive = true;
-        isSearching = false;
-        
-        // تحديث الواجهة
-        updateBoardUI();
-        statusDiv.innerText = '🎮 بدأت المباراة! دورك (X)';
-        turnDiv.innerText = '🎯 دورك (X)';
-        
-        // إخفاء/إظهار الأزرار
-        updateButtonsVisibility();
-        
-        // لو أي حركة AI ينتظر دوره ولكن البداية دائماً للاعب
-        // ما في شيء
-    }
-
-    // مغادرة اللعبة (إنهاء المباراة)
-    function leaveGame() {
-        if (gameActive === false && winner === null && !isSearching) {
-            // اصلاً لا توجد مباراة نشطة
-            statusDiv.innerText = '⚡ لا توجد مباراة نشطة';
-            return;
-        }
-        // إلغاء أي حالة وتصفير
-        gameActive = false;
-        winner = null;
-        isSearching = false;
-        board = Array(9).fill(null);
-        currentTurn = 'X';
-        updateBoardUI();
-        statusDiv.innerText = '🚪 غادرت المباراة. اضغط "بحث عن لاعب"';
-        turnDiv.innerText = '—';
-        updateButtonsVisibility();
-    }
-
-    // طلب مباراة جديدة (Rematch) بعد انتهاء اللعبة
-    function requestRematch() {
-        if (gameActive === true && winner === null) {
-            statusDiv.innerText = '⚠️ المباراة لم تنته بعد!';
-            return;
-        }
-        // بدء مباراة جديدة بنفس النظام
-        startNewMatch();
-    }
-
-    // زر البحث عن لاعب: يحاكي البحث ثم يبدأ مباراة ضد الذكاء الاصطناعي فوراً
-    function searchForPlayer() {
-        // إذا كان هناك لعبة نشطة، نطلب مغادرة أولاً؟
-        if (gameActive && !winner) {
-            statusDiv.innerText = '❗ هناك مباراة نشطة، اخرج أولاً';
-            return;
-        }
-        if (isSearching) return;
-        
-        isSearching = true;
-        statusDiv.innerText = '🔎 جاري البحث عن لاعب...';
-        turnDiv.innerText = '⏳ انتظر قليلاً';
-        updateButtonsVisibility();
-        
-        // محاكاة وقت بحث قصير (ثانية واحدة) ثم يبدأ المباراة
-        setTimeout(() => {
-            if (isSearching === true) {
-                isSearching = false;
-                // بدء المباراة ضد خصم (AI)
-                startNewMatch();
-                statusDiv.innerText = '✅ تم العثور على خصم! المباراة تبدأ.';
-                turnDiv.innerText = '🎯 دورك (X)';
-                updateButtonsVisibility();
+            gameOver = true;
+            gameActive = false;
+            if (winner === 'draw') {
+                statusMsg.innerText = '🤝 تعادل!';
+                turnMsg.innerText = 'انتهت المباراة بالتعادل';
+            } else if (winner === mySymbol) {
+                statusMsg.innerText = '🎉 فزت! 🎉';
+                turnMsg.innerText = 'مبروك الفوز!';
+            } else {
+                statusMsg.innerText = '💔 خسرت...';
+                turnMsg.innerText = 'الخصم فاز';
             }
-        }, 500); // بحث سريع وهمي
+            isMyTurn = false;
+        } else if (active) {
+            gameOver = false;
+            isMyTurn = (currentTurn === mySymbol);
+            if (isMyTurn) {
+                statusMsg.innerText = '🎯 دورك الآن';
+                turnMsg.innerText = `أنت ${mySymbol} - دورك`;
+            } else {
+                statusMsg.innerText = '⏳ انتظر دور الخصم';
+                turnMsg.innerText = `دور الخصم (${mySymbol === 'X' ? 'O' : 'X'})`;
+            }
+        } else {
+            gameOver = true;
+        }
+        
+        updateBoardUI();
+        updateButtonsVisibility();
     }
 
-    // تحديث رؤية الأزرار حسب حالة اللعبة
+    function resetLocalState() {
+        inGame = false;
+        searching = false;
+        currentRoom = null;
+        mySymbol = null;
+        isMyTurn = false;
+        gameActive = false;
+        gameOver = false;
+        boardState = Array(9).fill(null);
+        updateBoardUI();
+    }
+
     function updateButtonsVisibility() {
-        if ((gameActive === true && winner === null) || (gameActive === true && winner !== null)) {
-            // توجد مباراة نشطة (أو انتهت)
+        if (searching && !inGame) {
             searchBtn.style.display = 'none';
+            cancelBtn.style.display = 'inline-block';
+            leaveBtn.style.display = 'none';
+            rematchBtn.style.display = 'none';
+        } else if (inGame) {
+            searchBtn.style.display = 'none';
+            cancelBtn.style.display = 'none';
             leaveBtn.style.display = 'inline-block';
-            // زر مباراة جديدة يظهر فقط في حالة انتهاء المباراة (winner != null) أو inactive لكن gameActive false
-            if (winner !== null || (gameActive === false && winner !== null)) {
+            if (gameOver || !gameActive) {
                 rematchBtn.style.display = 'inline-block';
-            } else if (gameActive === true && winner === null) {
-                rematchBtn.style.display = 'none';
-            } else if (!gameActive && winner === null) {
-                rematchBtn.style.display = 'none';
-                leaveBtn.style.display = 'none';
-                searchBtn.style.display = 'inline-block';
             } else {
                 rematchBtn.style.display = 'none';
             }
-        } 
-        else if (isSearching) {
-            searchBtn.style.display = 'none';
-            leaveBtn.style.display = 'inline-block';
-            rematchBtn.style.display = 'none';
-        }
-        else {
-            // وضع الخمول
+        } else {
             searchBtn.style.display = 'inline-block';
-            leaveBtn.style.display = 'none';
-            rematchBtn.style.display = 'none';
-        }
-        
-        // معالجة إضافية: عند انتهاء المباراة بالخسارة او الفوز نظهر rematch
-        if (winner !== null && !gameActive) {
-            searchBtn.style.display = 'none';
-            leaveBtn.style.display = 'inline-block';
-            rematchBtn.style.display = 'inline-block';
-        }
-        
-        // إذا لم توجد لعبة ولا بحث
-        if (!gameActive && !isSearching && winner === null) {
-            searchBtn.style.display = 'inline-block';
+            cancelBtn.style.display = 'none';
             leaveBtn.style.display = 'none';
             rematchBtn.style.display = 'none';
         }
     }
 
+    function handleCellClick(index) {
+        if (!inGame || !gameActive || !isMyTurn || gameOver) return;
+        if (boardState[index] !== null) return;
+        
+        socket.emit('makeMove', {
+            roomId: currentRoom,
+            index: index,
+            symbol: mySymbol
+        });
+    }
+
+    // أحداث Socket
+    function initSocket() {
+        socket = io();
+        
+        socket.on('connect', () => {
+            statusMsg.innerText = '✅ متصل بالخادم | ابحث عن لاعب';
+            turnMsg.innerText = 'جاهز للعب';
+        });
+        
+        socket.on('waitingForOpponent', () => {
+            statusMsg.innerText = '⏳ جاري البحث عن خصم...';
+            turnMsg.innerText = 'في قائمة الانتظار';
+        });
+        
+        socket.on('gameStart', (data) => {
+            const { roomId, symbol, board, currentTurn, gameActive: active } = data;
+            currentRoom = roomId;
+            mySymbol = symbol;
+            boardState = [...board];
+            gameActive = active;
+            inGame = true;
+            searching = false;
+            gameOver = false;
+            isMyTurn = (currentTurn === mySymbol);
+            
+            statusMsg.innerText = `🎮 بدأت المباراة! أنت ${mySymbol}`;
+            turnMsg.innerText = isMyTurn ? `دورك (${mySymbol})` : `انتظر (${mySymbol})`;
+            updateBoardUI();
+            updateButtonsVisibility();
+        });
+        
+        socket.on('gameStateUpdate', updateUIForGameState);
+        
+        socket.on('rematchSuccess', (data) => {
+            boardState = [...data.board];
+            gameActive = data.gameActive;
+            gameOver = false;
+            isMyTurn = (data.currentTurn === mySymbol);
+            updateBoardUI();
+            statusMsg.innerText = '🔄 مباراة جديدة! ابدأ';
+            turnMsg.innerText = isMyTurn ? `دورك (${mySymbol})` : `دور الخصم`;
+            updateButtonsVisibility();
+        });
+        
+        socket.on('opponentLeft', () => {
+            statusMsg.innerText = '🚨 الخصم غادر المباراة';
+            turnMsg.innerText = 'انتهت المباراة';
+            resetLocalState();
+            updateButtonsVisibility();
+        });
+        
+        socket.on('searchCancelled', () => {
+            resetLocalState();
+            statusMsg.innerText = '❌ تم إلغاء البحث';
+            updateButtonsVisibility();
+        });
+        
+        socket.on('disconnect', () => {
+            statusMsg.innerText = '⚠️ انقطع الاتصال بالخادم';
+            resetLocalState();
+            updateButtonsVisibility();
+        });
+    }
+    
+    // إجراءات الأزرار
+    function startSearch() {
+        if (inGame) {
+            statusMsg.innerText = 'أنت في مباراة حالياً';
+            return;
+        }
+        searching = true;
+        updateButtonsVisibility();
+        statusMsg.innerText = '🔍 جاري البحث...';
+        turnMsg.innerText = 'البحث عن خصم';
+        socket.emit('searchForPlayer');
+    }
+    
+    function cancelSearch() {
+        if (searching) {
+            socket.emit('cancelSearch');
+        }
+        resetLocalState();
+        statusMsg.innerText = 'تم إلغاء البحث';
+        updateButtonsVisibility();
+    }
+    
+    function leaveGame() {
+        if (currentRoom) {
+            socket.emit('leaveGame', { roomId: currentRoom });
+        }
+        resetLocalState();
+        statusMsg.innerText = '🚪 غادرت اللعبة';
+        updateButtonsVisibility();
+    }
+    
+    function requestRematch() {
+        if (currentRoom && (gameOver || !gameActive)) {
+            socket.emit('rematchRequest', { roomId: currentRoom });
+            statusMsg.innerText = '✅ طلبت مباراة جديدة... ننتظر الخصم';
+        }
+    }
+    
     // ربط الأزرار
-    function bindEvents() {
-        searchBtn.onclick = searchForPlayer;
+    function bindButtons() {
+        searchBtn.onclick = startSearch;
+        cancelBtn.onclick = cancelSearch;
         leaveBtn.onclick = leaveGame;
         rematchBtn.onclick = requestRematch;
     }
-
-    // تهيئة اللعبة
-    function init() {
-        createBoardUI();
-        bindEvents();
-        // بداية بدون مباراة
-        gameActive = false;
-        winner = null;
-        board = Array(9).fill(null);
-        currentTurn = 'X';
-        updateBoardUI();
-        statusDiv.innerText = '🔍 اضغط "بحث عن لاعب"';
-        turnDiv.innerText = '—';
-        updateButtonsVisibility();
-    }
-
-    init();
+    
+    // بدء التشغيل
+    createBoard();
+    bindButtons();
+    initSocket();
+    resetLocalState();
+    updateButtonsVisibility();
 </script>
 </body>
 </html>
