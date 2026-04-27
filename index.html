@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>اكس او | أونلاين</title>
     
-    <!-- Firebase SDK (الإصدار الجديد مع Auth) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -44,21 +43,18 @@
         <button id="leaveBtn" style="display:none;">🚪 مغادرة</button>
     </div>
     <div class="board" id="board"></div>
-    <footer>🎯 أونلاين حقيقي | آمن مع المصادقة</footer>
+    <footer>🎯 أونلاين حقيقي | ضد لاعب حقيقي</footer>
 </div>
 
 <script>
-    // إعدادات Firebase
     const firebaseConfig = {
         databaseURL: "https://xo-d7a80-default-rtdb.firebaseio.com/"
     };
     
-    // تهيئة Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const auth = firebase.auth();
     
-    // متغيرات اللعبة
     let gameRef = null;
     let playerSymbol = null;
     let isMyTurn = false;
@@ -68,7 +64,6 @@
     let isSearching = false;
     let myUID = null;
     
-    // عناصر DOM
     const statusMsg = document.getElementById('statusMsg');
     const turnMsg = document.getElementById('turnMsg');
     const searchBtn = document.getElementById('searchBtn');
@@ -76,7 +71,6 @@
     const leaveBtn = document.getElementById('leaveBtn');
     const boardDiv = document.getElementById('board');
     
-    // إنشاء لوحة اللعب
     function createBoard() {
         boardDiv.innerHTML = '';
         for (let i = 0; i < 9; i++) {
@@ -88,36 +82,25 @@
         }
     }
     
-    // تسجيل دخول مجهول
     async function anonymousLogin() {
         try {
             statusMsg.innerText = "🔄 جاري التسجيل...";
             const userCredential = await auth.signInAnonymously();
             myUID = userCredential.user.uid;
-            console.log("✅ تم التسجيل بنجاح:", myUID);
             statusMsg.innerText = "✅ جاهز للعب";
             turnMsg.innerText = "⚡ اضغط بحث للبدء";
             searchBtn.style.display = 'inline-block';
             return true;
         } catch (error) {
-            console.error("❌ خطأ في التسجيل:", error);
-            statusMsg.innerText = "❌ فشل التسجيل: " + error.message;
-            turnMsg.innerText = "تأكد من تفعيل Anonymous Auth في Firebase";
+            statusMsg.innerText = "❌ فشل التسجيل: فعّل Anonymous Auth في Firebase";
+            turnMsg.innerText = "اذهب إلى Authentication ← Sign-in methods";
             return false;
         }
     }
     
-    // البحث عن لاعب
     async function searchForPlayer() {
-        if (isSearching) {
-            statusMsg.innerText = "⚠️ جاري البحث بالفعل...";
-            return;
-        }
-        
-        if (!myUID) {
-            statusMsg.innerText = "❌ لم يتم التسجيل بعد...";
-            return;
-        }
+        if (isSearching) return;
+        if (!myUID) return;
         
         isSearching = true;
         searchBtn.disabled = true;
@@ -129,43 +112,29 @@
             const snapshot = await waitingRef.once('value');
             const waitingPlayer = snapshot.val();
             
-            // حالة 1: يوجد لاعب ينتظر (وليس أنا)
             if (waitingPlayer && waitingPlayer.id !== myUID) {
                 gameId = waitingPlayer.gameId;
                 playerSymbol = 'O';
                 gameRef = db.ref('games/' + gameId);
-                
-                // الانضمام للعبة
-                await gameRef.update({ 
-                    player2: myUID, 
-                    status: 'playing',
-                    updatedAt: Date.now()
-                });
+                await gameRef.update({ player2: myUID, status: 'playing' });
                 await waitingRef.remove();
                 startGame();
-            } 
-            // حالة 2: لا يوجد لاعب ينتظر
-            else {
+            } else {
                 playerSymbol = 'X';
-                gameId = 'g_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
-                
+                gameId = 'g_' + Date.now();
                 const newGame = {
                     id: gameId,
                     player1: myUID,
                     player2: null,
                     status: 'waiting',
                     board: Array(9).fill(""),
-                    turn: 'X',
-                    createdAt: Date.now()
+                    turn: 'X'
                 };
-                
                 gameRef = db.ref('games/' + gameId);
                 await gameRef.set(newGame);
                 await waitingRef.set({ id: myUID, gameId: gameId });
-                
                 statusMsg.innerHTML = '<span class="loading"></span> ننتظر خصماً...';
                 
-                // الاستماع لانضمام خصم
                 currentListener = gameRef.on('value', (snap) => {
                     const data = snap.val();
                     if (data && data.status === 'playing' && data.player2) {
@@ -173,74 +142,60 @@
                     }
                 });
                 
-                // مهلة 30 ثانية
                 searchTimeout = setTimeout(async () => {
                     if (isSearching) {
                         await cancelSearch();
-                        statusMsg.innerText = "⌛ لم يتم العثور على خصم، حاول مرة أخرى";
-                        searchBtn.disabled = false;
+                        statusMsg.innerText = "⌛ لم يتم العثور على خصم";
                         searchBtn.style.display = 'inline-block';
+                        searchBtn.disabled = false;
                     }
                 }, 30000);
             }
         } catch (error) {
-            console.error("خطأ في البحث:", error);
-            statusMsg.innerText = "❌ خطأ في الاتصال، حاول مجدداً";
+            statusMsg.innerText = "❌ خطأ في الاتصال";
             searchBtn.disabled = false;
-            searchBtn.style.display = 'inline-block';
             cancelBtn.style.display = 'none';
             isSearching = false;
         }
     }
     
-    // إلغاء البحث
     async function cancelSearch() {
-        if (searchTimeout) clearTimeout(searchTimeout);
+        clearTimeout(searchTimeout);
         if (currentListener && gameRef) gameRef.off('value', currentListener);
         if (gameId) {
-            await db.ref('games/' + gameId).remove().catch(e => console.log(e));
-            await db.ref('waiting').remove().catch(e => console.log(e));
+            await db.ref('games/' + gameId).remove();
+            await db.ref('waiting').remove();
         }
         isSearching = false;
         cancelBtn.style.display = 'none';
         searchBtn.style.display = 'inline-block';
         searchBtn.disabled = false;
         statusMsg.innerText = "✅ تم الإلغاء";
-        turnMsg.innerText = "⚡ اضغط بحث للبدء";
     }
     
-    // بدء اللعبة
     function startGame() {
-        if (searchTimeout) clearTimeout(searchTimeout);
+        clearTimeout(searchTimeout);
         isSearching = false;
         cancelBtn.style.display = 'none';
         searchBtn.style.display = 'none';
         leaveBtn.style.display = 'inline-block';
-        
         statusMsg.innerText = `🎮 بدأت! أنت ${playerSymbol}`;
-        turnMsg.innerText = "⏳ جاري تحميل اللعبة...";
         
-        // إزالة المستمع القديم
         if (currentListener && gameRef) gameRef.off('value', currentListener);
         
-        // إضافة مستمع جديد للتحديثات
         gameRef.on('value', (snap) => {
             const data = snap.val();
             if (data) updateUI(data);
         });
     }
     
-    // تحديث واجهة اللعبة
     function updateUI(data) {
         const board = data.board || Array(9).fill("");
         const cells = document.querySelectorAll('.cell');
         
-        // تحديث الخلايا
         board.forEach((val, i) => {
             cells[i].innerText = val;
             cells[i].className = `cell ${val}`;
-            
-            // تمكين الخلية إذا كان دوري واللعبة مستمرة والخلية فارغة
             if (data.turn === playerSymbol && data.status === 'playing' && val === "") {
                 cells[i].classList.remove('disabled');
             } else {
@@ -248,24 +203,13 @@
             }
         });
         
-        // تحديث حالة اللعبة
         if (data.status === 'finished') {
-            if (data.winner === 'draw') {
-                statusMsg.innerText = "🤝 تعادل!";
-                turnMsg.innerText = "انتهت المباراة";
-            } else if (data.winner === playerSymbol) {
-                statusMsg.innerText = "🎉 فزت! 🎉";
-                turnMsg.innerText = "مبروك الفوز!";
-            } else {
-                statusMsg.innerText = "💔 خسرت";
-                turnMsg.innerText = "حظاً أوفر في المرة القادمة";
-            }
-            
-            // إعادة تعيين بعد 3 ثواني
+            if (data.winner === 'draw') statusMsg.innerText = "🤝 تعادل!";
+            else if (data.winner === playerSymbol) statusMsg.innerText = "🎉 فزت!";
+            else statusMsg.innerText = "💔 خسرت";
+            turnMsg.innerText = "انتهت المباراة";
             setTimeout(() => {
-                if (confirm("انتهت اللعبة! هل تريد لعب مباراة جديدة؟")) {
-                    location.reload();
-                }
+                if (confirm("انتهت اللعبة! هل تريد لعب مباراة جديدة؟")) location.reload();
             }, 2000);
         } else {
             isMyTurn = (data.turn === playerSymbol);
@@ -273,86 +217,48 @@
         }
     }
     
-    // تنفيذ الحركة
     async function makeMove(index) {
         if (!isMyTurn) return;
-        
         const snap = await gameRef.once('value');
         const data = snap.val();
-        
-        if (!data || data.status !== 'playing') return;
-        if (data.board[index] !== "") return;
+        if (!data || data.status !== 'playing' || data.board[index] !== "") return;
         
         const newBoard = [...data.board];
         newBoard[index] = playerSymbol;
-        
-        // التحقق من الفوز
         const winner = checkWinner(newBoard);
         const isDraw = !winner && newBoard.every(cell => cell !== "");
         
-        const updates = {
-            board: newBoard,
-            turn: playerSymbol === 'X' ? 'O' : 'X'
-        };
-        
+        const updates = { board: newBoard, turn: playerSymbol === 'X' ? 'O' : 'X' };
         if (winner || isDraw) {
             updates.status = 'finished';
             updates.winner = winner || 'draw';
         }
-        
         await gameRef.update(updates);
     }
     
-    // التحقق من الفائز
     function checkWinner(board) {
-        const lines = [
-            [0,1,2], [3,4,5], [6,7,8],
-            [0,3,6], [1,4,7], [2,5,8],
-            [0,4,8], [2,4,6]
-        ];
-        
+        const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
         for (let line of lines) {
-            const [a, b, c] = line;
-            if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-                return board[a];
-            }
+            const [a,b,c] = line;
+            if (board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
         }
         return null;
     }
     
-    // مغادرة اللعبة
     async function leaveGame() {
         if (gameRef && gameId) {
-            await gameRef.remove().catch(e => console.log(e));
-            await db.ref('waiting').remove().catch(e => console.log(e));
+            await gameRef.remove();
+            await db.ref('waiting').remove();
         }
         location.reload();
     }
     
-    // ربط الأزرار
     searchBtn.onclick = searchForPlayer;
     cancelBtn.onclick = cancelSearch;
     leaveBtn.onclick = leaveGame;
     
-    // تهيئة اللعبة
     createBoard();
-    
-    // تفعيل المصادقة المجهولة أولاً
-    anonymousLogin().then(success => {
-        if (!success) {
-            statusMsg.innerText = "⚠️ تحتاج تفعيل Anonymous Auth في Firebase Console";
-        }
-    });
-    
-    // التحقق من الاتصال
-    const connectedRef = db.ref('.info/connected');
-    connectedRef.on('value', (snap) => {
-        if (snap.val()) {
-            console.log("✅ متصل بـ Firebase");
-        } else {
-            statusMsg.innerText = "⚠️ لا يوجد اتصال بالإنترنت";
-        }
-    });
+    anonymousLogin();
 </script>
 </body>
 </html>
