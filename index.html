@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>اكس او | online</title>
+    <title>اكس او | أونلاين</title>
     
     <!-- استدعاء Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -12,20 +12,21 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
         body { background: #1a1a2e; font-family: system-ui, Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
-        .game-container { background: #0f0f1a; padding: 24px 20px; max-width: 420px; width: 100%; text-align: center; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .game-container { background: #0f0f1a; padding: 24px 20px; max-width: 420px; width: 100%; text-align: center; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #16213e; }
         h1 { color: #eee; font-size: 32px; margin-bottom: 8px; }
-        .status { background: #16213e; padding: 12px; border-radius: 40px; margin: 12px 0; font-weight: bold; font-size: 18px; color: #e94560; min-height: 50px; display: flex; align-items: center; justify-content: center; }
+        .status { background: #16213e; padding: 12px; border-radius: 40px; margin: 12px 0; font-weight: bold; font-size: 18px; color: #e94560; min-height: 60px; display: flex; align-items: center; justify-content: center; }
         .turn { background: #1a1a2e; padding: 8px; border-radius: 20px; color: #ccc; margin: 10px 0; font-size: 16px; }
         .buttons { display: flex; gap: 10px; justify-content: center; margin: 15px 0; flex-wrap: wrap; }
-        button { background: #0f3460; border: none; color: white; font-weight: bold; padding: 12px 24px; border-radius: 40px; cursor: pointer; font-size: 14px; transition: 0.2s; }
-        button:hover { background: #16213e; }
+        button { background: #0f3460; border: none; color: white; font-weight: bold; padding: 12px 24px; border-radius: 40px; cursor: pointer; font-size: 14px; transition: 0.2s; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        button:hover { background: #1e5494; transform: translateY(-2px); }
         button:active { transform: scale(0.96); }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 20px 0; }
         .cell { background: #16213e; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; font-size: 56px; font-weight: bold; border-radius: 16px; cursor: pointer; transition: 0.1s; color: #eee; }
-        .cell.X { color: #4db8ff; }
-        .cell.O { color: #ff9f4a; }
-        .cell.disabled { cursor: default; opacity: 0.8; }
+        .cell:hover:not(.disabled) { background: #1f2d50; }
+        .cell.X { color: #4db8ff; text-shadow: 0 0 15px #4db8ff; }
+        .cell.O { color: #ff9f4a; text-shadow: 0 0 15px #ff9f4a; }
+        .cell.disabled { cursor: default; }
         footer { font-size: 11px; color: #555; margin-top: 20px; }
     </style>
 </head>
@@ -43,13 +44,13 @@
 </div>
 
 <script>
-    // إعدادات Firebase الخاصة بك
+    // إعدادات Firebase الجديدة الخاصة بك
     const firebaseConfig = {
-        databaseURL: "https://x-o-2682b-default-rtdb.firebaseio.com/"
+        databaseURL: "https://xo-d7a80-default-rtdb.firebaseio.com/"
     };
     
     let db, gameRef, playerSymbol, isMyTurn, gameId, myId;
-    const myIdKey = 'xo_player_id';
+    const myIdKey = 'xo_player_id_new';
     
     if (!localStorage.getItem(myIdKey)) {
         localStorage.setItem(myIdKey, 'p_' + Math.random().toString(36).substr(2, 9));
@@ -66,12 +67,22 @@
         try {
             firebase.initializeApp(firebaseConfig);
             db = firebase.database();
-            statusMsg.innerText = "✅ جاهز للبحث";
-            turnMsg.innerText = "اضغط بحث للبدء";
+            
+            // اختبار الاتصال والقواعد (Rules)
+            const testRef = db.ref('.info/connected');
+            testRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    statusMsg.innerText = "✅ متصل وجاهز";
+                    turnMsg.innerText = "اضغط بحث للبدء";
+                } else {
+                    statusMsg.innerText = "⏳ جاري الاتصال...";
+                }
+            });
+            
             createBoard();
         } catch (e) {
-            statusMsg.innerText = "⚠️ خطأ في الاتصال";
-            console.error(e);
+            statusMsg.innerText = "⚠️ خطأ في الإعدادات";
+            alert("تأكد من وضع رابط Firebase بشكل صحيح");
         }
     }
 
@@ -90,40 +101,47 @@
         statusMsg.innerText = "⏳ جاري البحث...";
         searchBtn.disabled = true;
 
-        const waitingRef = db.ref('waiting');
-        const snapshot = await waitingRef.once('value');
-        const waitingPlayer = snapshot.val();
+        try {
+            const waitingRef = db.ref('waiting');
+            const snapshot = await waitingRef.once('value');
+            const waitingPlayer = snapshot.val();
 
-        if (waitingPlayer && waitingPlayer.id !== myId) {
-            gameId = waitingPlayer.gameId;
-            playerSymbol = 'O';
-            gameRef = db.ref('games/' + gameId);
-            
-            await gameRef.update({ player2: myId, status: 'playing' });
-            await waitingRef.remove();
-            startGame();
-        } else {
-            gameId = 'g_' + Date.now();
-            playerSymbol = 'X';
-            const newGame = {
-                id: gameId,
-                player1: myId,
-                status: 'waiting',
-                board: Array(9).fill(""),
-                turn: 'X'
-            };
-            gameRef = db.ref('games/' + gameId);
-            await gameRef.set(newGame);
-            await waitingRef.set({ id: myId, gameId: gameId });
-            
-            statusMsg.innerText = "⏳ ننتظر خصماً...";
-            
-            gameRef.on('value', (snap) => {
-                const data = snap.val();
-                if (data && data.status === 'playing') {
-                    startGame();
-                }
-            });
+            if (waitingPlayer && waitingPlayer.id !== myId) {
+                gameId = waitingPlayer.gameId;
+                playerSymbol = 'O';
+                gameRef = db.ref('games/' + gameId);
+                
+                await gameRef.update({ player2: myId, status: 'playing' });
+                await waitingRef.remove();
+                startGame();
+            } else {
+                gameId = 'g_' + Date.now();
+                playerSymbol = 'X';
+                const newGame = {
+                    id: gameId,
+                    player1: myId,
+                    status: 'waiting',
+                    board: Array(9).fill(""),
+                    turn: 'X'
+                };
+                gameRef = db.ref('games/' + gameId);
+                await gameRef.set(newGame);
+                await waitingRef.set({ id: myId, gameId: gameId });
+                
+                statusMsg.innerText = "⏳ ننتظر خصماً...";
+                
+                gameRef.on('value', (snap) => {
+                    const data = snap.val();
+                    if (data && data.status === 'playing') {
+                        startGame();
+                    }
+                });
+            }
+        } catch (error) {
+            console.error(error);
+            alert("خطأ: تأكد من تفعيل Rules في Firebase إلى true");
+            statusMsg.innerText = "❌ خطأ في القواعد (Rules)";
+            searchBtn.disabled = false;
         }
     }
 
@@ -158,7 +176,7 @@
             turnMsg.innerText = "انتهت المباراة";
             setTimeout(() => {
                 if(confirm("انتهت اللعبة، هل تريد العودة للرئيسية؟")) location.reload();
-            }, 1000);
+            }, 1500);
         } else {
             isMyTurn = (data.turn === playerSymbol);
             turnMsg.innerText = isMyTurn ? "🎯 دورك" : "⏳ دور الخصم";
